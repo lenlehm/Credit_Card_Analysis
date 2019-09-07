@@ -138,7 +138,7 @@ class RegressionMethods():
 		self.sklearn_lasso 			  = None # SKLearn method of Lasso (enough for this project)
 
 		self.lehmann_prediction 	  = None # OLS from me with entire dataset and NO Noise
-		self.Lehmann_ridge_pred		  = None # My implementation of Ridge 
+		self.lehmann_ridge_pred		  = None # My implementation of Ridge 
 
 	def generate_data(self):
 		X 	= np.random.rand(self.n)
@@ -156,7 +156,7 @@ class RegressionMethods():
 		print("Variance of Sigma Square: {}, \nVariance of Beta: {}".format(sigma2, beta_var))
 
 	# ------- Starting with the SKLearn implementations first ---------------------
-	def Sklearn_OLS(self, X, y, with_split=False): # without train and test split - can go straight to prediction
+	def Sklearn_OLS(self, X, y): # without train and test split - can go straight to prediction
 		polynom 				= PolynomialFeatures(degree=self.degree)
 		XY 						= polynom.fit_transform(np.array([X.ravel(), y.ravel()]).T)
 		regression 				= linear_model.LinearRegression(fit_intercept=False)
@@ -348,16 +348,22 @@ class RegressionMethods():
 		if regression_type == 'OLS':
 			self.lehmann_prediction = designX.dot(self.beta_OLS)
 			if with_split:
-				self.lehmann_prediction.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
+				try:
+					self.lehmann_prediction.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
+				except:
+					self.lehmann_prediction.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
 			else: # entire data
 				self.lehmann_prediction.reshape(self.targets.shape[0], self.targets.shape[1])
 
 		elif regression_type == 'RIDGE':
-			self.Lehmann_ridge_pred = designX.dot(self.beta_ridge)
+			self.lehmann_ridge_pred = designX.dot(self.beta_ridge)
 			if with_split: 
-				self.Lehmann_ridge_pred.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
+				try:
+					self.lehmann_ridge_pred.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
+				except: 
+					self.lehmann_ridge_pred.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
 			else: # entire data
-				self.Lehmann_ridge_pred.reshape(self.targets.shape[0], self.targets.shape[1])
+				self.lehmann_ridge_pred.reshape(self.targets.shape[0], self.targets.shape[1])
 
 	
 # --------------- Below here are the Score measures (MSE, R2 and Cross Validation) ------------
@@ -472,6 +478,6 @@ if __name__ == "__main__":
 
 	test.Lehmann_Ridge_fit(test.lamda, test.X_train, test.y_train, True, True)
 	test.Lehmann_Predictions('RIDGE', testing_X	, with_split=splitting)
-	scoring = Scores(test.test_targets	, test.Lehmann_ridge_pred)
+	scoring = Scores(test.test_targets	, test.lehmann_ridge_pred)
 	print(scoring.MeanSquaredError())
 	print(scoring.R2_Score())
