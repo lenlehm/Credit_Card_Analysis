@@ -406,7 +406,7 @@ class Scores():
 		return self.r2
 
 
-	def K_Fold_Cross_Validation(self, X, y, k_folds=4):
+	def K_Fold_Cross_Validation(self, X, y_in, k_folds=4):
 		'''
 		This algorithm performs the k-fold Cross Validation on the input data X and y
 
@@ -422,11 +422,11 @@ class Scores():
 		'''
 		# Reconstruct the non-mesh dataset and initialize scores
 		dataset = np.zeros(shape=X.shape[0])
-		y 	    = np.zeros(shape=y.shape[0])
+		y 	    = np.zeros(shape=y_in.shape[0])
 		error   = 0
 		for i in range(X.shape[0]): # since square matrix we only need i
 			dataset[i] 	= X[i, i]
-			y[i]		= y[i, i]
+			y[i]		= y_in[i, i]
 		#split the data into k equally sized bins
 		sizes = dataset.shape[0] // k_folds
 
@@ -457,7 +457,7 @@ class Scores():
 			val_data, val_target = np.meshgrid(val_data, val_target)
 			test_X 				 = CreateDesignMatrix_X(val_data, val_target, 5)
 			franke_val_target 	 = FrankeFunction(val_data, val_target)
-			prediction 			 = testX.dot(beta).reshape(franke_val_target.shape[0], franke_val_target.shape[1])
+			prediction 			 = test_X.dot(beta).reshape(franke_val_target.shape[0], franke_val_target.shape[1])
 
 			target = franke_val_target.ravel()
 			predicted 	= prediction.ravel()
@@ -491,8 +491,11 @@ if __name__ == "__main__":
 	# print(scores.MeanSquaredError())
 	# print(scores.R2_Score())
 
-	test.Lehmann_Ridge_fit(test.lamda, test.X_train, test.y_train, True, True)
-	test.Lehmann_Predictions('RIDGE', testing_X	, with_split=splitting)
-	scoring = Scores(test.test_targets	, test.lehmann_ridge_pred)
-	print(scoring.MeanSquaredError())
-	print(scoring.R2_Score())
+	# test.Lehmann_Ridge_fit(test.lamda, test.X_train, test.y_train, True, True)
+	# test.Lehmann_Predictions('RIDGE', testing_X	, with_split=splitting)
+	# scoring = Scores(test.test_targets	, test.lehmann_ridge_pred)
+	# print(scoring.MeanSquaredError())
+	# print(scoring.R2_Score())
+
+	scor = Scores(test.targets, test.lehmann_prediction)
+	scor.K_Fold_Cross_Validation(test.X_train, test.y_train, 4)
