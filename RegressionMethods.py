@@ -9,10 +9,18 @@ from sklearn.model_selection import train_test_split
 
 # Design Matrix
 def CreateDesignMatrix_X(x, y, n=5):
-    """
+    '''
     Function for creating a design X-matrix with rows [1, x, y, x^2, xy, xy^2 , etc.]
-    Input is x and y mesh or raveled mesh, keyword agruments n is the degree of the polynomial you want to fit.
-    """
+
+		PARAMETERS
+        ----------
+        x : np.array
+				raveled mesh of x 
+        y : np.array
+        		raveled mesh of y
+        n : int 
+        		degree of polynomial you want to fit
+	'''
     if len(x.shape) > 1:
         x = np.ravel(x)
         y = np.ravel(y)
@@ -21,8 +29,8 @@ def CreateDesignMatrix_X(x, y, n=5):
     l = int((n+1)*(n+2)/2)
     X = np.ones((N,l))
 
-    for i in range(1,n+1):
-        q = int((i)*(i+1)/2)
+    for i in range(1, n+1):
+        q = int( (i) * (i+1) / 2 )
         for k in range(i+1):
             X[:,q+k] = x**(i-k) * y**k
 
@@ -36,11 +44,26 @@ def FrankeFunction(x,y):
 	term3 = 0.5*np.exp(-(9*x-7)**2/4.0 - 0.25*((9*y-3)**2))
 	term4 = -0.2*np.exp(-(9*x-4)**2 - (9*y-7)**2)
 	return term1 + term2 + term3 + term4
+
+
+def Plot(self): 
+	fig 	= plt.figure(figsize=(12,9))
+	ax 		= fig.gca(projection='3d')
+	surf 	= ax.plot_surface(self.X, self.y, self.z_noise, cmap=cm.Greens, linewidth=0, antialiased=False)
+	if self.sklearn_prediction.any() != None: 
+		surf = ax.plot_surface(self.X + 1, self.y, self.sklearn_prediction, cmap=cm.Oranges, linewidth=0, antialiased=False)
+	if self.lehmann_prediction.any() != None: 
+		surf = ax.plot_surface(self.X, self.y + 1, self.lehmann_prediction, cmap=cm.Blues, linewidth=0, antialiased=False)
+		surf = ax.plot_surface(self.X + 1, self.y + 1, abs(self.lehmann_prediction - self.z_noise), cmap=cm.Reds, linewidth=0, antialiased=False)
+
+	ax.set_zlim(-0.1, 1.2)
+	fig.colorbar(surf, shrink=0.5, aspect=5)
+	plt.show()
 # ---------------------------------------------------------------------------------
 
 # Class contains all the Regression Methods used for this excercise
 class RegressionMethods():
-	def __init__(self, function, n=100, lamda=10, mu=0.0, sigma=0.4, noise_factor=5, degree=2, testing_size=0.2):
+	def __init__(self, function, n=100, lamda=10.0, mu=0.0, sigma=0.4, noise_factor=5, degree=2, testing_size=0.2):
 		'''
 		The class which handles all the logic behind the scenes.
 		Has the random training data and here you can set the noise, number of points, regularization and degree.
@@ -51,7 +74,7 @@ class RegressionMethods():
 				function that will be used for regression and that is computing our targets.
         n : int
         		number of datapoints to be sampled
-        lamda : int 
+        lamda : float 
         		regularization parameter for Lasso or Ridge Regression
         mu : float
         	 	mean value of the noise to take, default is zero mean
@@ -72,7 +95,7 @@ class RegressionMethods():
 		self.degree 			= degree
 		self.function 			= function # here we will only deal with the Franke Function
 
-		self.XY 				= None # design Matrix needed for variance calculation and predictions
+		self.designMatrix 		= None # design Matrix needed for variance calculation and predictions
 		self.beta_OLS		    = None # need beta for the predictions
 		self.beta_Ridge 		= None # likewise need beta for Ridge predictions
 		# add the regularization parameter for Lasso and Ridge
@@ -102,6 +125,7 @@ class RegressionMethods():
 			self.noisy 				= np.random.normal(mu, sigma, self.X.shape )
 			self.z_noise			= self.function(self.X, self.y) + (noise_factor * self.noisy)
 			pass
+
 		# TARGETS WITH NO NOISE BUT WITH AND WITHOUT SPLITS
 		self.targets 			= self.function(self.X, self.y) # like self.z_noise, only without noise
 		self.train_targets      = self.function(self.X_train, self.y_train) # like self.z only without noise
@@ -114,7 +138,7 @@ class RegressionMethods():
 		self.sklearn_lasso 			  = None # SKLearn method of Lasso (enough for this project)
 
 		self.lehmann_prediction 	  = None # OLS from me with entire dataset and NO Noise
-		self.lehmann_ridge 			  = None # My implementation of Ridge 
+		self.Lehmann_ridge_pred		  = None # My implementation of Ridge 
 
 	def generate_data(self):
 		X 	= np.random.rand(self.n)
@@ -125,6 +149,12 @@ class RegressionMethods():
 		X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=split, shuffle=True)
 		return X_train, X_test, y_train, y_test
 
+	def Variance(self): 
+		error = Scores(self.targets, self.lehmann_prediction)
+		sigma2 = error.MeanSquaredError()
+		beta_var = np.linalg.inv(self.designMatrix.T @ self.designMatrix) * sigma2
+		print("Variance of Sigma Square: {}, \nVariance of Beta: {}".format(sigma2, beta_var))
+
 	# ------- Starting with the SKLearn implementations first ---------------------
 	def Sklearn_OLS(self, X, y, with_split=False): # without train and test split - can go straight to prediction
 		polynom 				= PolynomialFeatures(degree=self.degree)
@@ -133,6 +163,20 @@ class RegressionMethods():
 		regression.fit(XY, self.z_noise.reshape(-1, 1))
 		self.sklearn_prediction = regression.predict(XY)
 		self.sklearn_prediction = self.sklearn_prediction.reshape(self.z_noise.shape[0], self.z_noise.shape[1])
+
+	def Sklearn_OLS_test_train(self, X_train, y_train): # can go straight to prediction
+		if (X_train.shape == self.X.shape):
+			print("I expected a train set of X not the entire dataset ....")
+		polynom 				= PolynomialFeatures(degree=self.degree)
+		XY 						= polynom.fit_transform(np.array([X_train.ravel(), y_train.ravel()]).T)
+		regression 				= linear_model.LinearRegression(fit_intercept=False)
+		regression.fit(XY, self.z.reshape(-1, 1))
+		# generate the proper test values and get the score
+		predict_values 			= polynom.fit_transform(np.array([self.X_test.ravel(), self.y_test.ravel()]).T)
+		self.sklearn_pred_test_train = regression.predict(predict_values)
+		print(self.sklearn_pred_test_train.shape)
+		self.sklearn_pred_test_train = self.sklearn_prediction.reshape(self.n, self.n)
+		print(self.sklearn_pred_test_train.shape)
 
 
 	def Sklearn_Ridge(self, lamda, X_in, y): # can go straight to prediction
@@ -163,29 +207,9 @@ class RegressionMethods():
 		self.sklearn_lasso = self.sklearn_lasso.reshape(self.z_noise.shape[0], self.z_noise.shape[1])
 
 
-	def Sklearn_OLS_test_train(self, X_train, y_train): # can go straight to prediction
-		if (X_train.shape == self.X.shape):
-			print("I expected a train set of X not the entire dataset ....")
-		polynom 				= PolynomialFeatures(degree=self.degree)
-		XY 						= polynom.fit_transform(np.array([X_train.ravel(), y_train.ravel()]).T)
-		regression 				= linear_model.LinearRegression(fit_intercept=False)
-		regression.fit(XY, self.z.reshape(-1, 1))
-		predict_values 			= polynom.fit_transform(np.array([self.X_test.ravel(), self.y_test.ravel()]).T)
-		self.sklearn_pred_test_train = regression.predict(predict_values)
-		self.sklearn_pred_test_train = self.sklearn_prediction.reshape(self.n, self.n)
 
 	# ------- Own implementations follow ----------------------------------------
-	def Lehmann_OLS_test_train(self, X_in, y): # fitting - storing beta values
-		# creating the OLS according to the lecture slides
-		X 		= CreateDesignMatrix_X(X_in, y, self.degree)
-		self.XY = X
-		# more stable SVD version
-		U,S,Vt = np.linalg.svd(X, full_matrices=True)
-		S_inverse = np.zeros(shape=X.shape)
-		S_inverse[:S.shape[0], :S.shape[0]] = np.diag(1.0 / S)
-		self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.z.reshape(-1, 1))))
-		# prediction - change this to test
-		# self.lehmann_pred_test_train = np.dot(self.X, self.beta).reshape(self.z.shape[0], self.z.shape[1])
+	#def Lehmann_OLS_fit_test_train(self, X_in, y): # fitting - storing beta values
 # SLIDES -------------------------- ??????????
 		# # We split the data in test and training data
 		# X_train, X_test, y_train, y_test = train_test_split(X, self.targets, test_size=0.2)
@@ -194,15 +218,9 @@ class RegressionMethods():
 		# # and then make the prediction
 		# prediction = X_train.dot(beta) # not X_test ?!
 # --------------------------
-		# unstable Matrix inversion
-		# X 		= CreateDesignMatrix_X(self.X_train, self.y_train, self.degree)
-		# self.XY = X
-		# beta 	= np.linalg.inv(X.T.dot(X)).dot(X.T).dot(self.z.reshape(-1, 1)) # is it self.targets or self.y_train
-		# prediction = X.dot(beta)
-		# self.lehmann_pred_test_train = prediction.reshape(self.z.shape[0], self.z.shape[1])
 
 
-	def Lehmann_OLS(self, X_in, y, with_split=False, with_noise=True): 
+	def Lehmann_OLS_fit(self, X_in, y, with_split=False, with_noise=True): 
 		'''
 		This is the code for my own implementation of the Ordinary Least Squares
 		You can change the model and have it noisy or the split by toggling the boolean values
@@ -226,8 +244,9 @@ class RegressionMethods():
 		if(X_in.shape != y.shape): 
 			raise ValueError('The shape of your X and y do not match! Give me either the entire data or the training set\n Currently received: X = {}, y = {}'.format(X_in.shape, y.shape))
 		
-		X 			= CreateDesignMatrix_X(X_in, y, self.degree)
-		self.XY 	= X
+		X 					= CreateDesignMatrix_X(X_in, y, self.degree)
+		self.designMatrix 	= X
+
 		U,S,Vt 		= np.linalg.svd(X, full_matrices=True)
 		S_inverse 	= np.zeros(shape=X.shape)
 		S_inverse[:S.shape[0], :S.shape[0]] = np.diag(1.0 / S)
@@ -252,10 +271,10 @@ class RegressionMethods():
 				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.targets.reshape(-1, 1))))
 
 
-	def Lehmann_Ridge(self, lamda, X_in, y, with_split=False, with_noise=False):
+	def Lehmann_Ridge_fit(self, lamda, X_in, y, with_split=False, with_noise=False):
 		'''
-		This is the code for my own implementation of the Ordinary Least Squares
-		You can change the model and have it noisy or the split by toggling the boolean values
+		This is the code for my own implementation of the Ridge Regression
+		It basically is the OLS with the regularization parameter lambda
 
 		PARAMETERS
         ----------
@@ -281,9 +300,9 @@ class RegressionMethods():
 		if lamda == None :
 			raise ValueError("No lambda value set for Ridge regression.") 
 
-		X 			= CreateDesignMatrix_X(X_in, y, self.degree)
-		self.XY 	= X
-		I_X 		= np.eye(np.shape(X)[1]) # idendity matrix
+		X 					= CreateDesignMatrix_X(X_in, y, self.degree)
+		self.designMatrix 	= X
+		I_X 				= np.eye(np.shape(X)[1]) # idendity matrix
 		if with_noise: 
 			noisy 	= np.random.normal(0, 0.4, X_in.shape[0])
 			z_noisy	= self.function(X_in, y) + (5 * noisy)
@@ -304,7 +323,7 @@ class RegressionMethods():
 				self.beta_ridge = np.linalg.inv(X.T.dot(X) + lamda * I_X).dot(X.T).dot(self.targets.reshape(-1,1))
 
 
-	def Lehmann_Predictions(self, regression_type, X_in, with_split=False):
+	def Lehmann_Predictions(self, regression_type, designX, with_split=False):
 		'''
 		Here the final Prediction of the model happens.
 		
@@ -312,8 +331,12 @@ class RegressionMethods():
         ----------
         regression_type : string (in ['OLS', 'RIDGE'])
 				String indicating which type of regression methods comes in either 'OLS', or 'RIDGE'
-        X_in : np.array - DesignMatrix
+        designX : np.array - DesignMatrix
         		contains the DesignMatrix to further calculate the dot product with the betas
+        		if you want to make predictions on test data, then create the Design Matrix as follows: 
+        		designX_test = CreateDesignMatrix_X(X_test, y_test, poly_degree)
+        		to get the proper beta parameter in the training you have to generate the design matrix with train data
+        		designX_train = CreateDesignMatrix_X(X_train, y_train, poly_degree)
         with_split : bool 
         		boolean indicator of whether we deal with a training set or have entire dataset
 
@@ -323,75 +346,64 @@ class RegressionMethods():
 				stores the predictions in the member variable of the class
 		'''
 		if regression_type == 'OLS':
-			self.lehmann_prediction = self.XY.dot(self.beta_OLS)
+			self.lehmann_prediction = designX.dot(self.beta_OLS)
 			if with_split:
-				self.lehmann_prediction.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
+				self.lehmann_prediction.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
 			else: # entire data
 				self.lehmann_prediction.reshape(self.targets.shape[0], self.targets.shape[1])
 
 		elif regression_type == 'RIDGE':
-			self.lehmann_ridge = self.XY.dot(self.beta_ridge)
+			self.Lehmann_ridge_pred = designX.dot(self.beta_ridge)
 			if with_split: 
-				self.lehmann_ridge.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
+				self.Lehmann_ridge_pred.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
 			else: # entire data
-				self.lehmann_ridge.reshape(self.targets.shape[0], self.targets.shape[1])
+				self.Lehmann_ridge_pred.reshape(self.targets.shape[0], self.targets.shape[1])
 
+	
+# --------------- Below here are the Score measures (MSE, R2 and Cross Validation) ------------
+class Scores():
+	def __init__(self, targets, predictions):
+		self.target 	= targets
+		self.predicted 	= predictions
 
-	def Plot(self): 
-		fig 	= plt.figure(figsize=(12,9))
-		ax 		= fig.gca(projection='3d')
-		surf 	= ax.plot_surface(self.X, self.y, self.z_noise, cmap=cm.Greens, linewidth=0, antialiased=False)
-		if self.sklearn_prediction.any() != None: 
-			surf = ax.plot_surface(self.X + 1, self.y, self.sklearn_prediction, cmap=cm.Oranges, linewidth=0, antialiased=False)
-		if self.lehmann_prediction.any() != None: 
-			surf = ax.plot_surface(self.X, self.y + 1, self.lehmann_prediction, cmap=cm.Blues, linewidth=0, antialiased=False)
-			surf = ax.plot_surface(self.X + 1, self.y + 1, abs(self.lehmann_prediction - self.z_noise), cmap=cm.Reds, linewidth=0, antialiased=False)
+		self.mse 	= 0
+		self.r2 	= 0
+		self.kfold 	= 0
 
-		ax.set_zlim(-0.1, 1.2)
-		fig.colorbar(surf, shrink=0.5, aspect=5)
-		plt.show()
-
-	# --------------- Below here are the Score measures (MSE, R2 and Cross Validation) ------------
-	def MeanSquaredError(self, target, predicted):
-		mse 		= 0
-		target 		= target.ravel()
-		predicted 	= predicted.ravel()
+	def MeanSquaredError(self):
+		target 		= self.target.ravel()
+		predicted 	= self.predicted.ravel()
 		for pred, targ in zip(predicted, target):
-			mse += (pred - targ)**2
-		mse /= len(target) # sklearn implemented it like this somehow
+			self.mse += (pred - targ)**2
+		self.mse /= len(target) # sklearn implemented it like this somehow
 		sklearn_mse = metrics.mean_squared_error(target, predicted)
-		if round(sklearn_mse, 6) != round(mse, 6): # get a little bit of variance in the values
-			print("THE MSE: {}\nYOUR MSE: {}".format(sklearn_mse, mse))
-			return sklearn_mse
-		else:
-			print("The MSE: {}".format(mse))
-			return mse
+		if round(sklearn_mse, 6) != round(self.mse, 6): # get a little bit of variance in the values
+			print("THE MSE: {}\nYOUR MSE: {}".format(sklearn_mse, self.mse))
+			self.mse =  sklearn_mse
+		return self.mse
 
 
-	def R2_Score(self, target, predicted):
-		r2 			= 0
-		mean_y 		= np.mean(target.ravel())
-		predicted 	= predicted.ravel()
-		target 		= target.ravel()
+	def R2_Score(self):
+		mean_y 		= np.mean(self.target.ravel())
+		predicted 	= self.predicted.ravel()
+		target 		= self.target.ravel()
 		numerator, denominator = 0, 0
 		for pred, targ in zip(predicted, target):
 			numerator += (pred - targ)**2
 			denominator += (targ - mean_y)**2
-		r2 = 1 - (numerator / denominator)
+		self.r2 = 1 - (numerator / denominator)
 		# compare with the sklearn package
 		sklearn_r2 = metrics.r2_score(target, predicted)
-		if round(sklearn_r2, 6) != round(r2, 6):
-			print("THE R2: {}\nYOUR R2: {}".format(sklearn_r2, r2))
-			return sklearn_r2
-		else:
-			print("The R2: {}".format(r2))
-			return r2
+		if round(sklearn_r2, 6) != round(self.r2, 6):
+			print("THE R2: {}\nYOUR R2: {}".format(sklearn_r2, self.r2))
+			self.r2 = sklearn_r2
+		return self.r2
 
 
-	def K_Fold_Cross_Validation(self, k_folds=4):
+	def K_Fold_Cross_Validation(self, X, y, k_folds=4):
 		# Reconstruct the non-mesh dataset and initialize scores
-		dataset = np.zeros(shape=self.X.shape[0])
-		y 	    = np.zeros(shape=self.y.shape[0])
+		dataset = np.zeros(shape=X.shape[0])
+		y 	    = np.zeros(shape=y.shape[0])
 		error   = 0
 		for i in range(self.X.shape[0]): # since square matrix we only need i
 			dataset[i] 	= self.X[i, i]
@@ -420,8 +432,8 @@ class RegressionMethods():
 
 			# train the classifier on the data and evaluate on val data
 			train_data, train_target = np.meshgrid(train_data, train_target) # design Matrix ecpects mesh
-			X 						= CreateDesignMatrix_X(train_data, train_target, self.degree)
-			franke_target 			= self.function(train_data, train_target) # y- values for beta
+			X 						 = CreateDesignMatrix_X(train_data, train_target, self.degree)
+			franke_target 			 = self.function(train_data, train_target) # y- values for beta
 			beta 		= np.linalg.inv(X.T.dot(X)).dot(X.T).dot(franke_target.reshape(-1, 1))
 			prediction 	= X.dot(beta).reshape(franke_target.shape[0], franke_target.shape[1])
 
@@ -437,11 +449,6 @@ class RegressionMethods():
 		return error
 
 
-	def Variance(self): 
-		sigma2 = self.MeanSquaredError(self.targets, self.lehmann_prediction)
-		beta_var = np.linalg.inv(self.XY.T @ self.XY) * sigma2
-		print("Variance of Sigma Square: {}, \nVariance of Beta: {}".format(sigma2, beta_var))
-
 
 # ------------------------------ MAIN - TESTING -----------------------------------------------------
 if __name__ == "__main__":
@@ -450,68 +457,21 @@ if __name__ == "__main__":
 	testLasso 	= False	
 	testRidge 	= False	
 	testVar 	= False
-	testCrossValidation = False
+	testCV 		= False
+	splitting 	= True
 
-	splitting = True
+	test 	= RegressionMethods(n=120, function=FrankeFunction, degree=5, lamda=10, noise_factor=7)
+	testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
 
-	test 		= RegressionMethods(n=120, function=FrankeFunction, degree=5, lamda=10)
+	# test.Lehmann_OLS_fit(test.X_train, test.y_train, with_split=splitting, with_noise=False)
+	# testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
+	# test.Lehmann_Predictions('OLS', testing_X, with_split=splitting)
+	# scores = Scores(test.test_targets, test.lehmann_prediction)
+	# print(scores.MeanSquaredError())
+	# print(scores.R2_Score())
 
-	test.Lehmann_OLS(test.X_train, test.y_train, with_split=splitting, with_noise=False)
-	test.Lehmann_Predictions('OLS', test.XY, with_split=splitting)
-	test.MeanSquaredError(test.train_targets, test.lehmann_prediction)
-	
-	test.Lehmann_Ridge(test.lamda, test.X,test.y, with_split=False, with_noise=False)
-	test.Lehmann_Predictions('RIDGE', test.XY, with_split=False)
-	test.R2_Score(test.targets, test.lehmann_ridge)
-
-
-	if testScikit:
-		print("\n ################ OLS ########################")
-		test.Sklearn_OLS()
-		test.R2_Score(test.targets, test.sklearn_prediction)
-		test.MeanSquaredError(test.targets, test.sklearn_prediction)
-		print('\n Train Test OLS')
-		test.Sklearn_OLS_test_train()
-		test.R2_Score(test.targets, test.sklearn_pred_test_train)
-	
-	if testLehmann:
-		print("\n ################ LEHMANN ########################")
-		test.Lehmann_OLS()
-		test.R2_Score(test.targets, test.lehmann_prediction)
-		test.MeanSquaredError(test.targets, test.lehmann_prediction)
-		print("\n Now woth noise:")
-		test.Lehmann_OLS_noise(5)
-		test.R2_Score(test.targets, test.lehmann_noisy_prediction)
-		test.MeanSquaredError(test.targets, test.lehmann_noisy_prediction)
-		print("\n TRAIN AND TEST SPLIT: ")
-		test.Lehmann_OLS_test_train()
-		test.R2_Score(test.train_targets, test.lehmann_pred_test_train)
-		test.MeanSquaredError(test.train_targets, test.lehmann_pred_test_train)
-
-	if testRidge:
-		print("\n ################ RIDGE ########################")
-		test.Sklearn_Ridge(test.lamda)
-		test.R2_Score(test.targets, test.sklearn_ridge)
-		test.MeanSquaredError(test.targets, test.sklearn_ridge)
-
-		print("\n LEHMANN RIDGE:")
-		for lamda in [0.01, 0.1, 1, 10, 100]:
-			test.Lehmann_Ridge(lamda)
-			print("Lambda Value: {}".format(lamda))
-			test.R2_Score(test.targets, test.lehmann_ridge)
-			test.MeanSquaredError(test.targets, test.lehmann_ridge)
-
-	if testLasso:
-		print("\n ################ LASSO ######################## \n")
-		test.Sklearn_Lasso()
-		test.R2_Score(test.targets, test.sklearn_lasso)
-		test.MeanSquaredError(test.targets, test.sklearn_lasso)
-
-	if testCrossValidation	:
-		test.K_Fold_Cross_Validation()
-	
-	print(" ------------------------      -----------------------    ------------------------ \n")
-	if testVar:
-		test.Variance(k_folds=4)
-
-	#test.Plot()
+	test.Lehmann_Ridge_fit(test.lamda, test.X_train, test.y_train, True, True)
+	test.Lehmann_Predictions('RIDGE', testing_X	, with_split=splitting)
+	scoring = Scores(test.test_targets	, test.Lehmann_ridge_pred)
+	print(scoring.MeanSquaredError())
+	print(scoring.R2_Score())
