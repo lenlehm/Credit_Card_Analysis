@@ -485,6 +485,8 @@ class Scores():
 		-----------
 		mean_error : float
 				averaged Mean Squarred Error of the Test set across the k runs
+		mean_r2 : float
+				averaged R2 Score of the Test Dataset across the k runs
 		mean_var : float
 				averaged variance of the predictions across the k runs
 		mean_bias : float 
@@ -495,9 +497,10 @@ class Scores():
 		y 	    = np.zeros(shape=y_in.shape[0])
 
 		# get bias and variance and error
-		bias   = []
-		var    = []
-		error  = []
+		bias   		= []
+		var    		= []
+		error_mse  	= []
+		error_r2    = []
 
 		for i in range(X.shape[0]): # since square matrix we only need i
 			dataset[i] 	= X[i, i]
@@ -541,24 +544,23 @@ class Scores():
 			target = franke_val_target.ravel()
 			predicted 	= prediction.ravel()
 
-			error.append( np.sum( (franke_val_target-prediction)**2 ) / len(prediction) )
-			
+			error_mse.append( np.sum( (franke_val_target - prediction)**2 ) / len(prediction) )
+			error_r2.append(1 - np.sum( (prediction - franke_val_target)**2 ) / ( np.sum ( (franke_val_target - np.mean(franke_val_target))**2 ) ) )
 			# for pred, targ in zip(predicted, target):
 			# 	error += (pred - targ)**2
 
 			var.append(np.var(prediction))
 			bias.append(np.sum( (franke_val_target-prediction) / len(prediction) ) )
 
-		print("\nCross Validation Error: {}\nVariance of Prediction: {}\nBias : {}".format(np.mean(error), np.mean(var), np.mean(bias)))
-		return np.mean(error), np.mean(var), np.mean(bias)
+		return np.mean(error_mse), np.mean(error_r2), np.mean(var), np.mean(bias)
 
 
 
 # ------------------------------ MAIN - TESTING -----------------------------------------------------
 if __name__ == "__main__":
 	testScikit 	= False # includes OLS, Ridge, LASSO
-	testLehmann = True # includes OLS and Ridge own implementation
-	testCV 		= False
+	testLehmann = False # includes OLS and Ridge own implementation
+	testCV 		= True
 
 	lamda       = 29 # regularization parameter for Ridge and LASSO
 
@@ -613,5 +615,5 @@ if __name__ == "__main__":
 
 	if testCV:
 		scor = Scores(test.targets, test.lehmann_prediction)
-		scor.K_Fold_Cross_Validation(test.X_train, test.y_train, 4, True)
-		scor.K_Fold_Cross_Validation(test.X_train, test.y_train, 4, False)
+		mse, r2, var, bias = scor.K_Fold_Cross_Validation(test.X_train, test.y_train, k_folds=4, noise=noise)
+		print("\nCross Validation MSE: {}\nR2 Score : {}\nVariance : {}\nBias : {}".format(mse, r2, var, bias))
