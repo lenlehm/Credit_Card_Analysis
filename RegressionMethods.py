@@ -49,12 +49,12 @@ def FrankeFunction(x,y):
 def Plot(self): 
 	fig 	= plt.figure(figsize=(12,9))
 	ax 		= fig.gca(projection='3d')
-	surf 	= ax.plot_surface(self.X, self.y, self.z_noise, cmap=cm.Greens, linewidth=0, antialiased=False)
+	surf 	= ax.plot_surface(self.X, self.y, self.data_noise, cmap=cm.Greens, linewidth=0, antialiased=False)
 	if self.sklearn_prediction.any() != None: 
 		surf = ax.plot_surface(self.X + 1, self.y, self.sklearn_prediction, cmap=cm.Oranges, linewidth=0, antialiased=False)
 	if self.lehmann_prediction.any() != None: 
 		surf = ax.plot_surface(self.X, self.y + 1, self.lehmann_prediction, cmap=cm.Blues, linewidth=0, antialiased=False)
-		surf = ax.plot_surface(self.X + 1, self.y + 1, abs(self.lehmann_prediction - self.z_noise), cmap=cm.Reds, linewidth=0, antialiased=False)
+		surf = ax.plot_surface(self.X + 1, self.y + 1, abs(self.lehmann_prediction - self.data_noise), cmap=cm.Reds, linewidth=0, antialiased=False)
 
 	ax.set_zlim(-0.1, 1.2)
 	fig.colorbar(surf, shrink=0.5, aspect=5)
@@ -109,26 +109,13 @@ class RegressionMethods():
 		self.X_test, self.y_test   	= np.meshgrid(self.X_test_raw, self.y_test_raw)
 		self.X_train, self.y_train  = np.meshgrid(self.X_train_raw, self.y_train_raw)
 
-		# Setting up our targets WITH NOISE AND SPLIT
-		try:
-			self.z 					= self.function(self.X_train, self.y_train) + self.noise
-		except: 
-			print("Shape mismatch of noise {} and training split {}, but fixxin it right away".format(self.noise.shape, self.X_train.shape))
-			self.noise 				= np.random.normal(mu, sigma, self.X_train.shape )
-			self.z 					= self.function(self.X_train, self.y_train) + (noise_factor * self.noise)
-			pass
-		
-		# NOISY TARGETS WITHOUT SPLIT OF THE DATA
-		try:
-			self.z_noise			= self.function(self.X, self.y) + (noise_factor * self.noisy)
-		except: 
-			self.noisy 				= np.random.normal(mu, sigma, self.X.shape )
-			self.z_noise			= self.function(self.X, self.y) + (noise_factor * self.noisy)
-			pass
+		# Generate Noisy Targets for the fitting process of the models
+		self.train_noise = self.function(self.X_train, self.y_train) + (noise_factor *  np.random.normal(mu, sigma, self.X_train.shape ))
+		self.data_noise  = self.function(self.X, self.y) + (noise_factor * np.random.normal(mu, sigma, self.X.shape))
 
 		# TARGETS WITH NO NOISE BUT WITH AND WITHOUT SPLITS
-		self.targets 			= self.function(self.X, self.y) # like self.z_noise, only without noise
-		self.train_targets      = self.function(self.X_train, self.y_train) # like self.z only without noise
+		self.targets 			= self.function(self.X, self.y) # like self.train_noise, only without noise
+		self.train_targets      = self.function(self.X_train, self.y_train) # like self.data_noise only without noise
 		self.test_targets       = self.function(self.X_test, self.y_test)
 
 		# placeholder for all the predictions throughout the models
@@ -156,55 +143,141 @@ class RegressionMethods():
 		print("Variance of Sigma Square: {}, \nVariance of Beta: {}".format(sigma2, beta_var))
 
 	# ------- Starting with the SKLearn implementations first ---------------------
-	def Sklearn_OLS(self, X, y): # without train and test split - can go straight to prediction
+	def Sklearn_OLS(self, X, y, noise=False):
+		'''
+		This function predicts the test data based on the OLS implementation of the SKLearn libarary
+		However, here I want to show a way of BAD PRACTICE
+		We evaluate the model on the entire dataset and do not split it, so this is REALLY BAD
+
+		PARAMETERS
+        ----------
+        X : np.array
+				contains all the datapoints we have, comes already as np.mesh
+        y : np.array
+        		contains all the targets, corresponding to data X, comes as np.mesh
+        noise : boolean
+        		indicator of whether we should add noise to the fitting process of the model
+
+		RETURNS
+		----------
+		nothing
+				stores predictions straight in the member variable of the class.
+		'''
 		polynom 				= PolynomialFeatures(degree=self.degree)
 		XY 						= polynom.fit_transform(np.array([X.ravel(), y.ravel()]).T)
 		regression 				= linear_model.LinearRegression(fit_intercept=False)
-		regression.fit(XY, self.z_noise.reshape(-1, 1))
+		if noise: 
+			regression.fit(XY, self.data_noise.reshape(-1, 1))
+		else:
+			regression.fit(XY, self.targets.reshape(-1, 1))
 		self.sklearn_prediction = regression.predict(XY)
-		self.sklearn_prediction = self.sklearn_prediction.reshape(self.z_noise.shape[0], self.z_noise.shape[1])
 
-	def Sklearn_OLS_test_train(self, X_train, y_train): # can go straight to prediction
+
+	def Sklearn_OLS_test_train(self, X_train, y_train, noise=False):
+		'''
+		This function predicts the test data based on the OLS implementation of the SKLearn libarary
+		This time the model is properly evaluated on the testing dataset
+
+		PARAMETERS
+        ----------
+        X_train : np.array
+				contains all the datapoints, that the algorithm should train on, comes as np.mesh
+        y : np.array
+        		contains all the targets, corresponding to the input datapoints X_train, comes as np.mesh
+        noise : boolean
+        		indicator of whether we should add noise to the fitting process of the model
+
+		RETURNS
+		----------
+		nothing
+				stores predictions straight in the member variable of the class.
+		'''
 		if (X_train.shape == self.X.shape):
 			print("I expected a train set of X not the entire dataset ....")
 		polynom 				= PolynomialFeatures(degree=self.degree)
 		XY 						= polynom.fit_transform(np.array([X_train.ravel(), y_train.ravel()]).T)
 		regression 				= linear_model.LinearRegression(fit_intercept=False)
-		regression.fit(XY, self.z.reshape(-1, 1))
+		if noise: 
+			regression.fit(XY, self.train_noise.reshape(-1, 1))
+		else:
+			regression.fit(XY, self.train_targets.reshape(-1, 1))
 		# generate the proper test values and get the score
 		predict_values 			= polynom.fit_transform(np.array([self.X_test.ravel(), self.y_test.ravel()]).T)
 		self.sklearn_pred_test_train = regression.predict(predict_values)
-		print(self.sklearn_pred_test_train.shape)
-		self.sklearn_pred_test_train = self.sklearn_prediction.reshape(self.n, self.n)
-		print(self.sklearn_pred_test_train.shape)
 
 
-	def Sklearn_Ridge(self, lamda, X_in, y): # can go straight to prediction
-		self.lamda = lamda
-		if lamda == None :
-			raise ValueError("No lambda value set for Ridge regression.")
-		polynom 				= PolynomialFeatures(degree=self.degree)
-		XY 						= polynom.fit_transform(np.array([X_in.ravel(), y.ravel()]).T)
-		regression 				= linear_model.Ridge(fit_intercept=True, alpha=self.lamda)
-		regression.fit(XY, self.z_noise.reshape(-1, 1))
-		#beta = regression.coef_
-		#beta[0] = regression.intercept_
-		self.sklearn_ridge = regression.predict(XY)
-		self.sklearn_ridge = self.sklearn_ridge.reshape(self.z_noise.shape[0], self.z_noise.shape[1])
+	def Sklearn_Ridge(self, lamda, X_train, y_train, noise=False):
+		'''
+		This function predicts the test data based on the Ridge implementation of the SKLearn libarary
 
+		PARAMETERS
+        ----------
+        lamda : float 
+        		regularization parameter indicating the strength of the regularization
+        X_train : np.array
+				contains all the datapoints, that the algorithm should train on, comes as np.mesh
+        y : np.array
+        		contains all the targets, corresponding to the input datapoints X_train, comes as np.mesh
+        noise : boolean
+        		indicator of whether we should add noise to the fitting process of the model
 
-	def Sklearn_Lasso(self, lamda, X_in , y): # can go straight to prediction
+		RETURNS
+		----------
+		nothing
+				stores predictions straight in the member variable of the class.
+		'''
 		self.lamda = lamda
 		if lamda == None:
 			raise ValueError("No lambda value set for Lasso regression.")
 		polynom 				= PolynomialFeatures(degree=self.degree)
-		XY 						= polynom.fit_transform(np.array([X_in.ravel(), y.ravel()]).T)
-		regression 				= linear_model.Lasso(fit_intercept=True, max_iter=10000, alpha=lamda)
-		regression.fit(XY, self.z_noise.reshape(-1, 1))
+		XY 						= polynom.fit_transform(np.array([X_train.ravel(), y_train.ravel()]).T)
+		regression 				= linear_model.Ridge(fit_intercept=True, alpha=lamda)
+		if noise: 
+			regression.fit(XY, self.train_noise.reshape(-1, 1))
+		else:
+			regression.fit(XY, self.train_targets.reshape(-1, 1))
+
+		to_be_predicted = polynom.fit_transform(np.array([self.X_test.ravel(), self.y_test.ravel()]).T)
 		#beta = regression.coef_
 		#beta[0] = regression.intercept_
-		self.sklearn_lasso = regression.predict(XY)
-		self.sklearn_lasso = self.sklearn_lasso.reshape(self.z_noise.shape[0], self.z_noise.shape[1])
+		self.sklearn_ridge = regression.predict(to_be_predicted)
+
+
+	def Sklearn_Lasso(self, lamda, X_train , y_train, noise=False):
+		'''
+		This function predicts the test data based on the LASSO implementation of the SKLearn libarary
+
+		PARAMETERS
+        ----------
+        lamda : float 
+        		regularization parameter indicating the strength of the regularization
+        X_train : np.array
+				contains all the datapoints, that the algorithm should train on, comes as np.mesh
+        y : np.array
+        		contains all the targets, corresponding to the input datapoints X_train, comes as np.mesh
+        noise : boolean
+        		indicator of whether we should add noise to the fitting process of the model
+
+		RETURNS
+		----------
+		nothing
+				stores predictions straight in the member variable of the class.
+		'''
+		self.lamda = lamda
+		if lamda == None:
+			raise ValueError("No lambda value set for Lasso regression.")
+		polynom 				= PolynomialFeatures(degree=self.degree)
+		XY 						= polynom.fit_transform(np.array([X_train.ravel(), y_train.ravel()]).T)
+		regression 				= linear_model.Lasso(fit_intercept=True, max_iter=10000, alpha=lamda)
+		if noise: 
+			regression.fit(XY, self.train_noise.reshape(-1, 1))
+		else:
+			regression.fit(XY, self.train_targets.reshape(-1, 1))
+
+		to_be_predicted = polynom.fit_transform(np.array([self.X_test.ravel(), self.y_test.ravel()]).T)
+		#beta = regression.coef_
+		#beta[0] = regression.intercept_
+		self.sklearn_lasso = regression.predict(to_be_predicted)
 
 
 
@@ -220,7 +293,7 @@ class RegressionMethods():
 # --------------------------
 
 
-	def Lehmann_OLS_fit(self, X_in, y, with_split=False, with_noise=True): 
+	def Lehmann_OLS_fit(self, X_in, y, split=False, noise=True): 
 		'''
 		This is the code for my own implementation of the Ordinary Least Squares
 		You can change the model and have it noisy or the split by toggling the boolean values
@@ -231,9 +304,9 @@ class RegressionMethods():
 				contains all the datapoints, comes already as np.mesh
         y : np.array
         		contains all the targets, comes already as np.mesh
-        with_split : bool 
+        split : bool 
         		boolean indicator of whether we deal with a training set or have entire dataset
-        with_noise : bool
+        noise : bool
         	 	boolean indicator of whether we should add noise or not.
 
 		RETURNS
@@ -251,27 +324,21 @@ class RegressionMethods():
 		S_inverse 	= np.zeros(shape=X.shape)
 		S_inverse[:S.shape[0], :S.shape[0]] = np.diag(1.0 / S)
 
-		if with_noise: 
-			noisy 	= np.random.normal(0, 0.4, X_in.shape[0])
-			z_noisy	= self.function(X_in, y) + (5 * noisy)
+		if noise: 
+			if split: 
+				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.train_noise.reshape(-1, 1))))
 
-			if with_split: 
-				try:
-					self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, z_noisy.reshape(-1, 1))))
-				except Exception as e:
-					print("\nDimensions again: {}".format(e))
-					self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.z.reshape(-1, 1))))
 			else:  # entire data
-				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.z_noise.reshape(-1, 1))))
+				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.data_noise.reshape(-1, 1))))
 
 		else: # no noise wanted
-			if with_split:
+			if split:
 				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.train_targets.reshape(-1, 1))))
 			else: # entire data
 				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.targets.reshape(-1, 1))))
 
 
-	def Lehmann_Ridge_fit(self, lamda, X_in, y, with_split=False, with_noise=False):
+	def Lehmann_Ridge_fit(self, lamda, X_in, y, split=False, noise=False):
 		'''
 		This is the code for my own implementation of the Ridge Regression
 		It basically is the OLS with the regularization parameter lambda
@@ -284,9 +351,9 @@ class RegressionMethods():
 				contains all the datapoints, comes already as np.mesh
         y : np.array
         		contains all the targets, comes already as np.mesh
-        with_split : bool 
+        split : bool 
         		boolean indicator of whether we deal with a training set or have entire dataset
-        with_noise : bool
+        noise : bool
         	 	boolean indicator of whether we should add noise or not.
 
 		RETURNS
@@ -303,27 +370,20 @@ class RegressionMethods():
 		X 					= CreateDesignMatrix_X(X_in, y, self.degree)
 		self.designMatrix 	= X
 		I_X 				= np.eye(np.shape(X)[1]) # idendity matrix
-		if with_noise: 
-			noisy 	= np.random.normal(0, 0.4, X_in.shape[0])
-			z_noisy	= self.function(X_in, y) + (5 * noisy)
-
-			if with_split: 
-				try:
-					self.beta_ridge = np.linalg.inv(X.T.dot(X) + lamda * I_X).dot(X.T).dot(z_noisy.reshape(-1,1))
-				except Exception as e:
-					print("\nDimensions again: {}".format(e))
-					self.beta_ridge = np.linalg.inv(X.T.dot(X) + lamda * I_X).dot(X.T).dot(self.z.reshape(-1, 1))
+		if noise: 
+			if split: 
+				self.beta_ridge = np.linalg.inv(X.T.dot(X) + lamda * I_X).dot(X.T).dot(self.train_noise.reshape(-1,1))
 			else:  # entire data
-				self.beta_ridge = np.linalg.inv(X.T.dot(X) + lamda * I_X).dot(X.T).dot(self.z_noise.reshape(-1, 1))
+				self.beta_ridge = np.linalg.inv(X.T.dot(X) + lamda * I_X).dot(X.T).dot(self.data_noise.reshape(-1, 1))
 
 		else: # no noise wanted
-			if with_split:
+			if split:
 				self.beta_ridge = np.linalg.inv(X.T.dot(X) + lamda * I_X).dot(X.T).dot(self.train_targets.reshape(-1,1))
 			else: # entire data
 				self.beta_ridge = np.linalg.inv(X.T.dot(X) + lamda * I_X).dot(X.T).dot(self.targets.reshape(-1,1))
 
 
-	def Lehmann_Predictions(self, regression_type, designX, with_split=False):
+	def Lehmann_Predictions(self, regression_type, designX, split=False):
 		'''
 		Here the final Prediction of the model happens.
 		
@@ -337,7 +397,7 @@ class RegressionMethods():
         		designX_test = CreateDesignMatrix_X(X_test, y_test, poly_degree)
         		to get the proper beta parameter in the training you have to generate the design matrix with train data
         		designX_train = CreateDesignMatrix_X(X_train, y_train, poly_degree)
-        with_split : bool 
+        split : bool 
         		boolean indicator of whether we deal with a training set or have entire dataset
 
 		RETURNS
@@ -347,20 +407,22 @@ class RegressionMethods():
 		'''
 		if regression_type == 'OLS':
 			self.lehmann_prediction = designX.dot(self.beta_OLS)
-			if with_split:
-				try:
+			if split:
+				try: # if some idiot feeds the train target instead of test targets
 					self.lehmann_prediction.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
 				except:
+					print("![ATTENTION]! you are now comparing the train targets with the train predictions!!!!")
 					self.lehmann_prediction.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
 			else: # entire data
 				self.lehmann_prediction.reshape(self.targets.shape[0], self.targets.shape[1])
 
 		elif regression_type == 'RIDGE':
 			self.lehmann_ridge_pred = designX.dot(self.beta_ridge)
-			if with_split: 
+			if split: 
 				try:
 					self.lehmann_ridge_pred.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
 				except: 
+					print("![ATTENTION]! you are now comparing the train targets with the train predictions!!!!")
 					self.lehmann_ridge_pred.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
 			else: # entire data
 				self.lehmann_ridge_pred.reshape(self.targets.shape[0], self.targets.shape[1])
@@ -406,7 +468,7 @@ class Scores():
 		return self.r2
 
 
-	def K_Fold_Cross_Validation(self, X, y_in, k_folds=4):
+	def K_Fold_Cross_Validation(self, X, y_in, k_folds=4, noise=False):
 		'''
 		This algorithm performs the k-fold Cross Validation on the input data X and y
 
@@ -419,11 +481,24 @@ class Scores():
 		k_folds : int
 				determining the size of the validation set and the other subsets, splits the entire data into k equally sized subsets
 				where 1 subset is used for evaluating and each subset needs to be evaluated once.
+		RETURNS
+		-----------
+		mean_error : float
+				averaged Mean Squarred Error of the Test set across the k runs
+		mean_var : float
+				averaged variance of the predictions across the k runs
+		mean_bias : float 
+				averaged bias of targets-prediction across the k runs
 		'''
 		# Reconstruct the non-mesh dataset and initialize scores
 		dataset = np.zeros(shape=X.shape[0])
 		y 	    = np.zeros(shape=y_in.shape[0])
-		error   = 0
+
+		# get bias and variance and error
+		bias   = []
+		var    = []
+		error  = []
+
 		for i in range(X.shape[0]): # since square matrix we only need i
 			dataset[i] 	= X[i, i]
 			y[i]		= y_in[i, i]
@@ -432,7 +507,7 @@ class Scores():
 
 		# do the cross validation magic
 		for train_runs in range(k_folds):
-		# get the val indices for each run 
+		# get the validation indices for each run (hold out data)
 			start 	= train_runs * sizes
 			if train_runs == (k_folds - 1): 
 				end = dataset.shape[0]
@@ -450,8 +525,12 @@ class Scores():
 			# train the classifier on the data and evaluate on val data
 			train_data, train_target = np.meshgrid(train_data, train_target) # design Matrix ecpects mesh
 			X 				 		 = CreateDesignMatrix_X(train_data, train_target, 5)
-			franke_target 			 = FrankeFunction(train_data, train_target) # y- values for beta
-			beta 		= np.linalg.inv(X.T.dot(X)).dot(X.T).dot(franke_target.reshape(-1, 1))
+			if noise: 
+				franke_target 		 = FrankeFunction(train_data, train_target) + (5 * np.random.normal(0, 0.5, train_data.shape ) )
+			else:
+				franke_target 		 = FrankeFunction(train_data, train_target) # y- values for beta
+			
+			beta 	= np.linalg.inv(X.T.dot(X)).dot(X.T).dot(franke_target.reshape(-1, 1))
 
 			# predict the test data - create new designMatrix
 			val_data, val_target = np.meshgrid(val_data, val_target)
@@ -461,41 +540,78 @@ class Scores():
 
 			target = franke_val_target.ravel()
 			predicted 	= prediction.ravel()
-			#print(target.shape, predicted.shape	)
-			for pred, targ in zip(predicted, target):
-				error += (pred - targ)**2
 
-		error /= k_folds
-		print("\nCross Validation: {}".format(error))
-		return error
+			error.append( np.sum( (franke_val_target-prediction)**2 ) / len(prediction) )
+			
+			# for pred, targ in zip(predicted, target):
+			# 	error += (pred - targ)**2
+
+			var.append(np.var(prediction))
+			bias.append(np.sum( (franke_val_target-prediction) / len(prediction) ) )
+
+		print("\nCross Validation Error: {}\nVariance of Prediction: {}\nBias : {}".format(np.mean(error), np.mean(var), np.mean(bias)))
+		return np.mean(error), np.mean(var), np.mean(bias)
 
 
 
 # ------------------------------ MAIN - TESTING -----------------------------------------------------
 if __name__ == "__main__":
-	testScikit 	= False
-	testLehmann = False
-	testLasso 	= False	
-	testRidge 	= False	
-	testVar 	= False
+	testScikit 	= False # includes OLS, Ridge, LASSO
+	testLehmann = True # includes OLS and Ridge own implementation
 	testCV 		= False
-	splitting 	= True
 
-	test 	= RegressionMethods(n=120, function=FrankeFunction, degree=5, lamda=10, noise_factor=7)
+	lamda       = 29 # regularization parameter for Ridge and LASSO
+
+	splitting = True # check NOTICE in testLehmann
+	noise 	  = True # only for both my models (OLS and Ridge)
+	noise_level = 5
+
+	test 	= RegressionMethods(n=120, function=FrankeFunction, degree=5, lamda=lamda, noise_factor=noise_level)
 	testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
 
-	# test.Lehmann_OLS_fit(test.X_train, test.y_train, with_split=splitting, with_noise=False)
-	# testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
-	# test.Lehmann_Predictions('OLS', testing_X, with_split=splitting)
-	# scores = Scores(test.test_targets, test.lehmann_prediction)
-	# print(scores.MeanSquaredError())
-	# print(scores.R2_Score())
+	if testLehmann:
+		'''
+		NOTICE: If you want to use the train and test split you have to  			|| NO SPLIT
+		1.) enable the "splitting" variable above, 									|| disable "splitting" - splitting=False
+		2.) feed the classifier with the Training data (X_train, y_train), 			|| feed with entire data (self.X, self.y)
+		3.) generate the test_Design_Matrix with the testing Data (X_test, y_test)	|| use the internal design Matrix (self.designMatrix)
+		4.) feed the Scores with the test targets (test_targets)	  				|| use all targets for the scores (self.targets)
+		'''
+		test.Lehmann_OLS_fit(test.X_train, test.y_train, split=splitting, noise=noise)
+		testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
+		test.Lehmann_Predictions('OLS', testing_X, split=splitting)
+		scores = Scores(test.test_targets, test.lehmann_prediction)
+		print("\nMy OLS, split: {}, noise: {},  MSE: {}".format(splitting, noise, scores.MeanSquaredError()))
+		print("My OLS, split: {}, noise: {},  R2 : {}".format(splitting, noise, scores.R2_Score()))
 
-	# test.Lehmann_Ridge_fit(test.lamda, test.X_train, test.y_train, True, True)
-	# test.Lehmann_Predictions('RIDGE', testing_X	, with_split=splitting)
-	# scoring = Scores(test.test_targets	, test.lehmann_ridge_pred)
-	# print(scoring.MeanSquaredError())
-	# print(scoring.R2_Score())
+		test.Lehmann_Ridge_fit(test.lamda, test.X_train, test.y_train, splitting, noise)
+		test.Lehmann_Predictions('RIDGE', testing_X	, split=splitting)
+		scoring = Scores(test.test_targets	, test.lehmann_ridge_pred)
+		print("\nMy Ridge, split: {}, noise: {},  MSE: {}".format(splitting, noise, scoring.MeanSquaredError()))
+		print("My Ridge, split: {}, noise: {},  R2 : {}".format(splitting, noise, scoring.R2_Score()))
 
-	scor = Scores(test.targets, test.lehmann_prediction)
-	scor.K_Fold_Cross_Validation(test.X_train, test.y_train, 4)
+	if testScikit: # generates directly the predictions, don't need to fit here explicitly
+		test.Sklearn_OLS(test.X, test.y, noise) 
+		sk_scores = Scores(test.targets, test.sklearn_prediction)
+		print("\nSKLearn OLS, split: False, noise: {},  MSE: {}".format(noise, sk_scores.MeanSquaredError()))
+		print("SKLearn OLS, split: False, noise: {},  R2: {}".format(noise, sk_scores.R2_Score()))
+
+		test.Sklearn_OLS_test_train(test.X_train, test.y_train, noise) # generates directly the predictions
+		sk_scores = Scores(test.test_targets, test.sklearn_pred_test_train)
+		print("\nSKLearn OLS, split: True, noise: {},  MSE: {}".format(noise, sk_scores.MeanSquaredError()))
+		print("SKLearn OLS, split: True, noise: {},  R2: {}".format(noise, sk_scores.R2_Score()))
+
+		test.Sklearn_Ridge(test.lamda, test.X_train, test.y_train, noise)
+		sk_ridge = Scores(test.test_targets, test.sklearn_ridge)
+		print("\nSKLearn Ridge, split: True, noise: {},  MSE: {}".format(noise, sk_ridge.MeanSquaredError()))
+		print("SKLearn Ridge, split: True, noise: {},  R2: {}".format(noise, sk_ridge.R2_Score()))
+
+		test.Sklearn_Lasso(test.lamda, test.X_train, test.y_train, noise)
+		sk_lasso = Scores(test.test_targets, test.sklearn_lasso)
+		print("\nSKLearn LASSO, split: True, noise: {},  MSE: {}".format(noise, sk_lasso.MeanSquaredError()))
+		print("SKLearn LASSO, split: True, noise: {},  R2: {}".format(noise, sk_lasso.R2_Score()))
+
+	if testCV:
+		scor = Scores(test.targets, test.lehmann_prediction)
+		scor.K_Fold_Cross_Validation(test.X_train, test.y_train, 4, True)
+		scor.K_Fold_Cross_Validation(test.X_train, test.y_train, 4, False)
