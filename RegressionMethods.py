@@ -326,16 +326,28 @@ class RegressionMethods():
 
 		if noise: 
 			if split: 
-				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.train_noise.reshape(-1, 1))))
+				try: 
+					self.beta_OLS = np.linalg.inv(X.T.dot(X)).dot(X.T).dot(self.train_noise.reshape(-1, 1))
+				except:
+					self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.train_noise.reshape(-1, 1))))
 
 			else:  # entire data
-				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.data_noise.reshape(-1, 1))))
+				try: 
+					self.beta_OLS = np.linalg.inv(X.T.dot(X)).dot(X.T).dot(self.train_noise.reshape(-1, 1))
+				except:
+					self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.data_noise.reshape(-1, 1))))
 
 		else: # no noise wanted
 			if split:
-				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.train_targets.reshape(-1, 1))))
+				try: 
+					self.beta_OLS = np.linalg.inv(X.T.dot(X)).dot(X.T).dot(self.train_targets.reshape(-1, 1))
+				except:
+					self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.train_targets.reshape(-1, 1))))
 			else: # entire data
-				self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.targets.reshape(-1, 1))))
+				try: 
+					self.beta_OLS = np.linalg.inv(X.T.dot(X)).dot(X.T).dot(self.targets.reshape(-1, 1))
+				except: 
+					self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.targets.reshape(-1, 1))))
 
 
 	def Lehmann_Ridge_fit(self, lamda, X_in, y, split=False, noise=False):
@@ -544,13 +556,12 @@ class Scores():
 			target = franke_val_target.ravel()
 			predicted 	= prediction.ravel()
 
+			# get the MSE and R2 errors along with the variance and bias
 			error_mse.append( np.sum( (franke_val_target - prediction)**2 ) / len(prediction) )
 			error_r2.append(1 - np.sum( (prediction - franke_val_target)**2 ) / ( np.sum ( (franke_val_target - np.mean(franke_val_target))**2 ) ) )
-			# for pred, targ in zip(predicted, target):
-			# 	error += (pred - targ)**2
 
 			var.append(np.var(prediction))
-			bias.append(np.sum( (franke_val_target-prediction) / len(prediction) ) )
+			bias.append(np.sum( (franke_val_target - prediction) / len(prediction) ) )
 
 		return np.mean(error_mse), np.mean(error_r2), np.mean(var), np.mean(bias)
 
