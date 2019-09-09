@@ -245,7 +245,7 @@ class RegressionMethods():
 		self.sklearn_ridge = regression.predict(to_be_predicted)
 
 
-	def Sklearn_Lasso(self, lamda, X_train , y_train, noise=False):
+	def Sklearn_Lasso(self, lamda, X_train , y_train, evaluate_train_error=False, noise=False):
 		'''
 		This function predicts the test data based on the LASSO implementation of the SKLearn libarary
 
@@ -276,7 +276,10 @@ class RegressionMethods():
 		else:
 			regression.fit(XY, self.train_targets.reshape(-1, 1))
 
-		to_be_predicted = polynom.fit_transform(np.array([self.X_test.ravel(), self.y_test.ravel()]).T)
+		if evaluate_train_error: 
+			to_be_predicted = polynom.fit_transform(np.array([self.X_train.ravel(), self.y_train.ravel()]).T)
+		else: 
+			to_be_predicted = polynom.fit_transform(np.array([self.X_test.ravel(), self.y_test.ravel()]).T)
 		#beta = regression.coef_
 		#beta[0] = regression.intercept_
 		self.sklearn_lasso = regression.predict(to_be_predicted)
@@ -583,55 +586,8 @@ if __name__ == "__main__":
 	noise_level = 5
 	k_folds     = 4 # for Cross Validation
 
-	#test 	= RegressionMethods(n=120, function=FrankeFunction, degree=5, lamda=lamda, noise_factor=noise_level)
-	#testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
-
-	# Let's further analyze the bias variance tradeoff by plotting the train vs test accuracy over model complexity
-	n = 40
-	maxdegree = 14
-
-	bias_test     = np.zeros(maxdegree)
-	variance_test = np.zeros(maxdegree)
-	test_error    = np.zeros(maxdegree)
-
-	poly_degree = np.zeros(maxdegree)
-
-	bias_train     = np.zeros(maxdegree)
-	variance_train = np.zeros(maxdegree)
-	train_error    = np.zeros(maxdegree)
-
-	for degree in range(maxdegree):
-		# set up OLS and fit on training data
-		bias_var = RegressionMethods(function=FrankeFunction, n=n, degree=degree, testing_size=0.2)
-		bias_var.Lehmann_OLS_fit(bias_var.X_train, bias_var.y_train, split=True, noise=False)
-
-		# get the design Matrices for test and train data
-		testing_designX  = CreateDesignMatrix_X(bias_var.X_test, bias_var.y_test, degree)
-		train_designX = bias_var.designMatrix
-
-		# Get Test Error first
-		bias_var.Lehmann_Predictions('OLS', testing_designX, split=True)
-		test_error[degree] = np.mean( np.mean((bias_var.y_test.ravel() - bias_var.lehmann_prediction)**2, axis=1, keepdims=True) )
-		variance_test[degree] = np.mean( np.var(bias_var.lehmann_prediction, axis=1, keepdims=True) )
-		bias_test[degree] = np.mean( (bias_var.y_test.ravel() - np.mean(bias_var.lehmann_prediction, axis=1, keepdims=True))**2 )
-
-		# Now let'd get train error
-		bias_var.Lehmann_Predictions('OLS', train_designX, split=True)
-		train_error[degree] = np.mean( np.mean((bias_var.y_train.ravel() - bias_var.lehmann_prediction)**2, axis=1, keepdims=True) )
-		variance_train[degree] = np.mean( np.var(bias_var.lehmann_prediction, axis=1, keepdims=True) )
-		bias_train[degree] = np.mean( (bias_var.y_train.ravel() - np.mean(bias_var.lehmann_prediction, axis=1, keepdims=True))**2 )
-
-		poly_degree[degree] = degree
-
-
-		print('Polynomial degree:', degree)
-		print('Train Error: {}\nTest  Error: {}', train_error[degree], test_error[degree])
-	plt.plot(poly_degree, train_error, label='Train Error')
-	plt.plot(poly_degree, test_error, label='Test Error')
-	#plt.plot(poly_degree, variance, label='Variance')
-	plt.legend()
-	plt.show()
-
+	test 	= RegressionMethods(n=120, function=FrankeFunction, degree=5, lamda=lamda, noise_factor=noise_level)
+	testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
 
 	if testLehmann:
 		'''
