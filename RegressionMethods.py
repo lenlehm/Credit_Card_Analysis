@@ -128,8 +128,10 @@ class RegressionMethods():
 		self.lehmann_ridge_pred		  = None # My implementation of Ridge 
 
 	def generate_data(self):
-		X 	= np.random.rand(self.n)
-		y 	= np.random.rand(self.n)
+		X = np.linspace(-1, 3, self.n)
+		y = np.exp(-X**2) + 1.5 * np.exp(-(X-2)**2) + np.random.normal(0, 0.1, X.shape)
+		#X 	= np.random.rand(self.n)
+		#y 	= np.random.rand(self.n)
 		return X, y
 
 	def get_train_and_test_data(self, X, y, split):
@@ -419,14 +421,14 @@ class RegressionMethods():
 		'''
 		if regression_type == 'OLS':
 			self.lehmann_prediction = designX.dot(self.beta_OLS)
-			if split:
-				try: # if some idiot feeds the train target instead of test targets
-					self.lehmann_prediction.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
-				except:
-					print("![ATTENTION]! you are now comparing the train targets with the train predictions!!!!")
-					self.lehmann_prediction.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
-			else: # entire data
-				self.lehmann_prediction.reshape(self.targets.shape[0], self.targets.shape[1])
+			# if split:
+			# 	try: # if some idiot feeds the train target instead of test targets
+			# 		self.lehmann_prediction.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
+			# 	except:
+			# 		print("![ATTENTION]! you are now comparing the train targets with the train predictions!!!!")
+			# 		self.lehmann_prediction.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
+			# else: # entire data
+			# 	self.lehmann_prediction.reshape(self.targets.shape[0], self.targets.shape[1])
 
 		elif regression_type == 'RIDGE':
 			self.lehmann_ridge_pred = designX.dot(self.beta_ridge)
@@ -569,18 +571,67 @@ class Scores():
 
 # ------------------------------ MAIN - TESTING -----------------------------------------------------
 if __name__ == "__main__":
+	# Select the testing Regression Method
 	testScikit 	= False # includes OLS, Ridge, LASSO
 	testLehmann = False # includes OLS and Ridge own implementation
-	testCV 		= True
+	testCV 		= False # Test Cross Validation
 
 	lamda       = 29 # regularization parameter for Ridge and LASSO
 
-	splitting = True # check NOTICE in testLehmann
-	noise 	  = True # only for both my models (OLS and Ridge)
+	splitting 	= True # check NOTICE in testLehmann
+	noise 	  	= True # only for both my models (OLS and Ridge)
 	noise_level = 5
+	k_folds     = 4 # for Cross Validation
 
-	test 	= RegressionMethods(n=120, function=FrankeFunction, degree=5, lamda=lamda, noise_factor=noise_level)
-	testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
+	#test 	= RegressionMethods(n=120, function=FrankeFunction, degree=5, lamda=lamda, noise_factor=noise_level)
+	#testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
+
+	# Let's further analyze the bias variance tradeoff by plotting the train vs test accuracy over model complexity
+	n = 40
+	maxdegree = 14
+
+	bias_test     = np.zeros(maxdegree)
+	variance_test = np.zeros(maxdegree)
+	test_error    = np.zeros(maxdegree)
+
+	poly_degree = np.zeros(maxdegree)
+
+	bias_train     = np.zeros(maxdegree)
+	variance_train = np.zeros(maxdegree)
+	train_error    = np.zeros(maxdegree)
+
+	for degree in range(maxdegree):
+		# set up OLS and fit on training data
+		bias_var = RegressionMethods(function=FrankeFunction, n=n, degree=degree, testing_size=0.2)
+		bias_var.Lehmann_OLS_fit(bias_var.X_train, bias_var.y_train, split=True, noise=False)
+
+		# get the design Matrices for test and train data
+		testing_designX  = CreateDesignMatrix_X(bias_var.X_test, bias_var.y_test, degree)
+		train_designX = bias_var.designMatrix
+
+		# Get Test Error first
+		bias_var.Lehmann_Predictions('OLS', testing_designX, split=True)
+		test_error[degree] = np.mean( np.mean((bias_var.y_test.ravel() - bias_var.lehmann_prediction)**2, axis=1, keepdims=True) )
+		variance_test[degree] = np.mean( np.var(bias_var.lehmann_prediction, axis=1, keepdims=True) )
+		bias_test[degree] = np.mean( (bias_var.y_test.ravel() - np.mean(bias_var.lehmann_prediction, axis=1, keepdims=True))**2 )
+
+		# Now let'd get train error
+		bias_var.Lehmann_Predictions('OLS', train_designX, split=True)
+		train_error[degree] = np.mean( np.mean((bias_var.y_train.ravel() - bias_var.lehmann_prediction)**2, axis=1, keepdims=True) )
+		variance_train[degree] = np.mean( np.var(bias_var.lehmann_prediction, axis=1, keepdims=True) )
+		bias_train[degree] = np.mean( (bias_var.y_train.ravel() - np.mean(bias_var.lehmann_prediction, axis=1, keepdims=True))**2 )
+
+		poly_degree[degree] = degree
+
+
+		print('Polynomial degree:', degree)
+		print('Train Error: {}\nTest  Error: {}', train_error[degree], test_error[degree])
+	plt.plot(poly_degree, train_error, label='Train Error')
+	plt.plot(poly_degree, test_error, label='Test Error')
+	#plt.plot(poly_degree, variance, label='Variance')
+	plt.legend()
+	plt.show()
+
 
 	if testLehmann:
 		'''
@@ -626,5 +677,5 @@ if __name__ == "__main__":
 
 	if testCV:
 		scor = Scores(test.targets, test.lehmann_prediction)
-		mse, r2, var, bias = scor.K_Fold_Cross_Validation(test.X_train, test.y_train, k_folds=4, noise=noise)
+		mse, r2, var, bias = scor.K_Fold_Cross_Validation(test.X_train, test.y_train, k_folds=k_folds, noise=noise)
 		print("\nCross Validation MSE: {}\nR2 Score : {}\nVariance : {}\nBias : {}".format(mse, r2, var, bias))
