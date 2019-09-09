@@ -435,14 +435,14 @@ class RegressionMethods():
 
 		elif regression_type == 'RIDGE':
 			self.lehmann_ridge_pred = designX.dot(self.beta_ridge)
-			if split: 
-				try:
-					self.lehmann_ridge_pred.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
-				except: 
-					print("![ATTENTION]! you are now comparing the train targets with the train predictions!!!!")
-					self.lehmann_ridge_pred.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
-			else: # entire data
-				self.lehmann_ridge_pred.reshape(self.targets.shape[0], self.targets.shape[1])
+			# if split: 
+			# 	try:
+			# 		self.lehmann_ridge_pred.reshape(self.test_targets.shape[0], self.test_targets.shape[1])
+			# 	except: 
+			# 		print("![ATTENTION]! you are now comparing the train targets with the train predictions!!!!")
+			# 		self.lehmann_ridge_pred.reshape(self.train_targets.shape[0], self.train_targets.shape[1])
+			# else: # entire data
+			# 	self.lehmann_ridge_pred.reshape(self.targets.shape[0], self.targets.shape[1])
 
 	
 # --------------- Below here are the Score measures (MSE, R2 and Cross Validation) ------------
