@@ -257,6 +257,8 @@ class RegressionMethods():
 				contains all the datapoints, that the algorithm should train on, comes as np.mesh
         y : np.array
         		contains all the targets, corresponding to the input datapoints X_train, comes as np.mesh
+        evaluate_train_error : boolean
+        		indicator of whether to evaluate on train or on test data (True - eval on Train data)
         noise : boolean
         		indicator of whether we should add noise to the fitting process of the model
 
@@ -334,7 +336,14 @@ class RegressionMethods():
 				try: 
 					self.beta_OLS = np.linalg.inv(X.T.dot(X)).dot(X.T).dot(self.train_noise.reshape(-1, 1))
 				except:
-					self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.train_noise.reshape(-1, 1))))
+					# SVD way of beta
+					# U, s, VT = np.linalg.svd(X)
+					# D = np.zeros((len(U),len(VT)))
+					# for i in range(0,len(VT)):
+					# 	D[i,i]=s[i]
+					# UT = np.transpose(U); V = np.transpose(VT); invD = np.linalg.inv(D)
+					# self.beta_OLS = np.matmul(V,np.matmul(invD,UT))
+					self.beta_OLS = np.dot(Vt.T, np.dot(S_inverse.T, np.dot(U.T, self.data_noise.reshape(-1, 1))))
 
 			else:  # entire data
 				try: 
@@ -575,9 +584,9 @@ class Scores():
 # ------------------------------ MAIN - TESTING -----------------------------------------------------
 if __name__ == "__main__":
 	# Select the testing Regression Method
-	testScikit 	= False # includes OLS, Ridge, LASSO
-	testLehmann = False # includes OLS and Ridge own implementation
-	testCV 		= False # Test Cross Validation
+	testScikit 	= True # includes OLS, Ridge, LASSO
+	testLehmann = True # includes OLS and Ridge own implementation
+	testCV 		= True # Test Cross Validation
 
 	lamda       = 29 # regularization parameter for Ridge and LASSO
 
@@ -611,22 +620,22 @@ if __name__ == "__main__":
 		print("My Ridge, split: {}, noise: {},  R2 : {}".format(splitting, noise, scoring.R2_Score()))
 
 	if testScikit: # generates directly the predictions, don't need to fit here explicitly
-		test.Sklearn_OLS(test.X, test.y, noise) 
+		test.Sklearn_OLS(test.X, test.y, noise=noise) 
 		sk_scores = Scores(test.targets, test.sklearn_prediction)
 		print("\nSKLearn OLS, split: False, noise: {},  MSE: {}".format(noise, sk_scores.MeanSquaredError()))
 		print("SKLearn OLS, split: False, noise: {},  R2: {}".format(noise, sk_scores.R2_Score()))
 
-		test.Sklearn_OLS_test_train(test.X_train, test.y_train, noise) # generates directly the predictions
+		test.Sklearn_OLS_test_train(test.X_train, test.y_train, noise=noise) # generates directly the predictions
 		sk_scores = Scores(test.test_targets, test.sklearn_pred_test_train)
 		print("\nSKLearn OLS, split: True, noise: {},  MSE: {}".format(noise, sk_scores.MeanSquaredError()))
 		print("SKLearn OLS, split: True, noise: {},  R2: {}".format(noise, sk_scores.R2_Score()))
 
-		test.Sklearn_Ridge(test.lamda, test.X_train, test.y_train, noise)
+		test.Sklearn_Ridge(test.lamda, test.X_train, test.y_train, noise=noise)
 		sk_ridge = Scores(test.test_targets, test.sklearn_ridge)
 		print("\nSKLearn Ridge, split: True, noise: {},  MSE: {}".format(noise, sk_ridge.MeanSquaredError()))
 		print("SKLearn Ridge, split: True, noise: {},  R2: {}".format(noise, sk_ridge.R2_Score()))
 
-		test.Sklearn_Lasso(test.lamda, test.X_train, test.y_train, noise)
+		test.Sklearn_Lasso(test.lamda, test.X_train, test.y_train, evaluate_train_error=False, noise=noise)
 		sk_lasso = Scores(test.test_targets, test.sklearn_lasso)
 		print("\nSKLearn LASSO, split: True, noise: {},  MSE: {}".format(noise, sk_lasso.MeanSquaredError()))
 		print("SKLearn LASSO, split: True, noise: {},  R2: {}".format(noise, sk_lasso.R2_Score()))
