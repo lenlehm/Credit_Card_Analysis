@@ -1,4 +1,5 @@
 import random
+import scipy.stats
 import numpy as np
 from matplotlib import cm
 import matplotlib.pyplot as plt
@@ -143,6 +144,13 @@ class RegressionMethods():
 		sigma2 = error.MeanSquaredError()
 		beta_var = np.linalg.inv(self.designMatrix.T @ self.designMatrix) * sigma2
 		print("Variance of Sigma Square: {}, \nVariance of Beta: {}".format(sigma2, beta_var))
+
+	def get_confidence_interval(self, data, confidence=0.95):
+		data = np.array(data)
+		mean =  np.mean(data)
+		standard_error = scipy.stats.sem(data)
+		h = standard_error * scipy.stats.t.ppf( (1 + confidence) / 2. , len(data) - 1)
+		return mean, mean - h, mean + h
 
 	# ------- Starting with the SKLearn implementations first ---------------------
 	def Sklearn_OLS(self, X, y, noise=False):
