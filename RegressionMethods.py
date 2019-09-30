@@ -464,17 +464,15 @@ class RegressionMethods():
 	
 # --------------- Below here are the Score measures (MSE, R2 and Cross Validation) ------------
 class Scores():
-	def __init__(self, targets, predictions):
-		self.target 	= targets
-		self.predicted 	= predictions
+	def __init__(self):
 
 		self.mse 	= 0
 		self.r2 	= 0
 		self.kfold 	= 0
 
-	def MeanSquaredError(self):
-		target 		= self.target.ravel()
-		predicted 	= self.predicted.ravel()
+	def MeanSquaredError(self, target, predicted):
+		target 		= target.ravel()
+		predicted 	= predicted.ravel()
 		for pred, targ in zip(predicted, target):
 			self.mse += (pred - targ)**2
 		self.mse /= len(target) # sklearn implemented it like this somehow
@@ -485,10 +483,10 @@ class Scores():
 		return self.mse
 
 
-	def R2_Score(self):
-		mean_y 		= np.mean(self.target.ravel())
-		predicted 	= self.predicted.ravel()
-		target 		= self.target.ravel()
+	def R2_Score(self, target, predicted):
+		mean_y 		= np.mean(target.ravel())
+		predicted 	= predicted.ravel()
+		target 		= target.ravel()
 		numerator, denominator = 0, 0
 		for pred, targ in zip(predicted, target):
 			numerator += (pred - targ)**2
@@ -502,7 +500,7 @@ class Scores():
 		return self.r2
 
 
-	def K_Fold_Cross_Validation(self, X, y_in, k_folds=4, noise=False):
+	def K_Fold_Cross_Validation(self, X, y_in, model='OLS', lamda=0.01, k_folds=4, noise=False):
 		'''
 		This algorithm performs the k-fold Cross Validation on the input data X and y
 
@@ -512,7 +510,11 @@ class Scores():
 				meshed numpy array that is usually used to train a classifier from the RegressionMethod class
 		y : np.array
 				meshed numpy array with the corresponding targets to the input data X
-		k_folds : int
+		model : string (default: OLS)
+				string containing the model you want to perform Cross Validation on
+		lamda : decimal (default: 0.01)
+				float value containing the lambda value for Lasso and Ridge regression as regularization strength
+		k_folds : int (default: 4)
 				determining the size of the validation set and the other subsets, splits the entire data into k equally sized subsets
 				where 1 subset is used for evaluating and each subset needs to be evaluated once.
 		RETURNS
@@ -559,31 +561,62 @@ class Scores():
 			train_data 		= dataset[mask]
 			train_target 	= y[mask]
 
-			# train the classifier on the data and evaluate on val data
+			# Create the Design Matrix and targets for the Training data
 			train_data, train_target = np.meshgrid(train_data, train_target) # design Matrix ecpects mesh
 			X 				 		 = CreateDesignMatrix_X(train_data, train_target, 5)
 			if noise: 
 				franke_target 		 = FrankeFunction(train_data, train_target) + (5 * np.random.normal(0, 0.5, train_data.shape ) )
 			else:
 				franke_target 		 = FrankeFunction(train_data, train_target) # y- values for beta
-			
-			beta 	= np.linalg.inv(X.T.dot(X)).dot(X.T).dot(franke_target.reshape(-1, 1))
 
-			# predict the test data - create new designMatrix
+			# create Design Matrix and targets for testing data
 			val_data, val_target = np.meshgrid(val_data, val_target)
 			test_X 				 = CreateDesignMatrix_X(val_data, val_target, 5)
+
 			franke_val_target 	 = FrankeFunction(val_data, val_target)
-			prediction 			 = test_X.dot(beta).reshape(franke_val_target.shape[0], franke_val_target.shape[1])
 
-			target = franke_val_target.ravel()
-			predicted 	= prediction.ravel()
+			# target = franke_val_target.ravel()
+			# predicted 	= prediction.ravel()
+			
+			# choose the right model
+			if model == 'OLS':
+				beta 		= np.linalg.inv(X.T.dot(X)).dot(X.T).dot(franke_target.reshape(-1, 1))
+				prediction 	= test_X.dot(beta).reshape(franke_val_target.shape[0], franke_val_target.shape[1])
+				# get the MSE and R2 errors along with the variance and bias
+				error_mse.append( np.sum( (franke_val_target - prediction)**2 ) / len(prediction) )
+				error_r2.append(1 - np.sum( (prediction - franke_val_target)**2 ) / ( np.sum ( (franke_val_target - np.mean(franke_val_target))**2 ) ) )
 
-			# get the MSE and R2 errors along with the variance and bias
-			error_mse.append( np.sum( (franke_val_target - prediction)**2 ) / len(prediction) )
-			error_r2.append(1 - np.sum( (prediction - franke_val_target)**2 ) / ( np.sum ( (franke_val_target - np.mean(franke_val_target))**2 ) ) )
+				var.append(np.var(prediction))
+				bias.append(np.sum( (franke_val_target - prediction) / len(prediction) ) )
 
-			var.append(np.var(prediction))
-			bias.append(np.sum( (franke_val_target - prediction) / len(prediction) ) )
+			elif model == 'RIDGE':
+				beta 		= np.linalg.inv(X.T.dot(X) + lamda * np.eye(np.shape(X)[1])).dot(X.T).dot(franke_target.reshape(-1, 1))
+				prediction 	= test_X.dot(beta).reshape(franke_val_target.shape[0], franke_val_target.shape[1])
+				# get the MSE and R2 errors along with the variance and bias
+				error_mse.append( np.sum( (franke_val_target - prediction)**2 ) / len(prediction) )
+				error_r2.append(1 - np.sum( (prediction - franke_val_target)**2 ) / ( np.sum ( (franke_val_target - np.mean(franke_val_target))**2 ) ) )
+
+				var.append(np.var(prediction))
+				bias.append(np.sum( (franke_val_target - prediction) / len(prediction) ) )
+
+			elif model == 'LASSO':
+				polynom 				= PolynomialFeatures(degree=5)
+				XY 						= polynom.fit_transform(np.array([train_data.ravel(), franke_target.ravel()]).T)
+				regression 				= linear_model.Lasso(fit_intercept=True, max_iter=10000, alpha=lamda)
+				regression.fit(XY, franke_target.reshape(-1, 1))
+
+				to_be_predicted = polynom.fit_transform(np.array([val_data.ravel(), franke_val_target.ravel()]).T)
+				prediction = regression.predict(to_be_predicted)
+
+				# get the MSE and R2 errors along with the variance and bias
+				error_mse.append( np.sum( (franke_val_target.ravel() - prediction)**2 ) / len(prediction) )
+				error_r2.append(1 - np.sum( (prediction - franke_val_target.ravel())**2 ) / ( np.sum ( (franke_val_target - np.mean(franke_val_target))**2 ) ) )
+
+				var.append(np.var(prediction))
+				bias.append(np.sum( (franke_val_target.ravel() - prediction) / len(prediction) ) )
+				
+			else: 
+				raise ValueError("GOT AN UNDEFINED MODEL: {}, please use a string of ['OLS', 'RIDGE', 'LASSO'].".format(model))
 
 		return np.mean(error_mse), np.mean(error_r2), np.mean(var), np.mean(bias)
 
@@ -617,38 +650,39 @@ if __name__ == "__main__":
 		test.Lehmann_OLS_fit(test.X_train, test.y_train, split=splitting, noise=noise)
 		testing_X = CreateDesignMatrix_X(test.X_test, test.y_test, test.degree)
 		test.Lehmann_Predictions('OLS', testing_X, split=splitting)
-		scores = Scores(test.test_targets, test.lehmann_prediction)
-		print("\nMy OLS, split: {}, noise: {},  MSE: {}".format(splitting, noise, scores.MeanSquaredError()))
-		print("My OLS, split: {}, noise: {},  R2 : {}".format(splitting, noise, scores.R2_Score()))
+		scores = Scores()
+		print("\nMy OLS, split: {}, noise: {},  MSE: {}".format(splitting, noise, scores.MeanSquaredError(test.test_targets, test.lehmann_prediction)))
+		print("My OLS, split: {}, noise: {},  R2 : {}".format(splitting, noise, scores.R2_Score(test.test_targets, test.lehmann_prediction)))
 
 		test.Lehmann_Ridge_fit(test.lamda, test.X_train, test.y_train, splitting, noise)
 		test.Lehmann_Predictions('RIDGE', testing_X	, split=splitting)
-		scoring = Scores(test.test_targets	, test.lehmann_ridge_pred)
-		print("\nMy Ridge, split: {}, noise: {},  MSE: {}".format(splitting, noise, scoring.MeanSquaredError()))
-		print("My Ridge, split: {}, noise: {},  R2 : {}".format(splitting, noise, scoring.R2_Score()))
+		scoring = Scores()
+		print("\nMy Ridge, split: {}, noise: {},  MSE: {}".format(splitting, noise, scoring.MeanSquaredError(test.test_targets	, test.lehmann_ridge_pred)))
+		print("My Ridge, split: {}, noise: {},  R2 : {}".format(splitting, noise, scoring.R2_Score(test.test_targets	, test.lehmann_ridge_pred)))
 
 	if testScikit: # generates directly the predictions, don't need to fit here explicitly
 		test.Sklearn_OLS(test.X, test.y, noise=noise) 
-		sk_scores = Scores(test.targets, test.sklearn_prediction)
-		print("\nSKLearn OLS, split: False, noise: {},  MSE: {}".format(noise, sk_scores.MeanSquaredError()))
-		print("SKLearn OLS, split: False, noise: {},  R2: {}".format(noise, sk_scores.R2_Score()))
+		sk_scores = Scores()
+		print("\nSKLearn OLS, split: False, noise: {},  MSE: {}".format(noise, sk_scores.MeanSquaredError(test.targets, test.sklearn_prediction)))
+		print("SKLearn OLS, split: False, noise: {},  R2: {}".format(noise, sk_scores.R2_Score(test.targets, test.sklearn_prediction)))
 
 		test.Sklearn_OLS_test_train(test.X_train, test.y_train, noise=noise) # generates directly the predictions
-		sk_scores = Scores(test.test_targets, test.sklearn_pred_test_train)
-		print("\nSKLearn OLS, split: True, noise: {},  MSE: {}".format(noise, sk_scores.MeanSquaredError()))
-		print("SKLearn OLS, split: True, noise: {},  R2: {}".format(noise, sk_scores.R2_Score()))
+		sk_scores = Scores()
+		print("\nSKLearn OLS, split: True, noise: {},  MSE: {}".format(noise, sk_scores.MeanSquaredError(test.test_targets, test.sklearn_pred_test_train)))
+		print("SKLearn OLS, split: True, noise: {},  R2: {}".format(noise, sk_scores.R2_Score(test.test_targets, test.sklearn_pred_test_train)))
 
 		test.Sklearn_Ridge(test.lamda, test.X_train, test.y_train, noise=noise)
-		sk_ridge = Scores(test.test_targets, test.sklearn_ridge)
-		print("\nSKLearn Ridge, split: True, noise: {},  MSE: {}".format(noise, sk_ridge.MeanSquaredError()))
-		print("SKLearn Ridge, split: True, noise: {},  R2: {}".format(noise, sk_ridge.R2_Score()))
+		sk_ridge = Scores()
+		print("\nSKLearn Ridge, split: True, noise: {},  MSE: {}".format(noise, sk_ridge.MeanSquaredError(test.test_targets, test.sklearn_ridge)))
+		print("SKLearn Ridge, split: True, noise: {},  R2: {}".format(noise, sk_ridge.R2_Score(test.test_targets, test.sklearn_ridge)))
 
 		test.Sklearn_Lasso(test.lamda, test.X_train, test.y_train, evaluate_train_error=False, noise=noise)
-		sk_lasso = Scores(test.test_targets, test.sklearn_lasso)
-		print("\nSKLearn LASSO, split: True, noise: {},  MSE: {}".format(noise, sk_lasso.MeanSquaredError()))
-		print("SKLearn LASSO, split: True, noise: {},  R2: {}".format(noise, sk_lasso.R2_Score()))
+		sk_lasso = Scores()
+		print("\nSKLearn LASSO, split: True, noise: {},  MSE: {}".format(noise, sk_lasso.MeanSquaredError(test.test_targets, test.sklearn_lasso)))
+		print("SKLearn LASSO, split: True, noise: {},  R2: {}".format(noise, sk_lasso.R2_Score(test.test_targets, test.sklearn_lasso)))
 
 	if testCV:
-		scor = Scores(test.targets, test.lehmann_prediction)
-		mse, r2, var, bias = scor.K_Fold_Cross_Validation(test.X_train, test.y_train, k_folds=k_folds, noise=noise)
+		scor = Scores()
+		#K_Fold_Cross_Validation(self, X, y_in, model='OLS', lamda=0.01, k_folds=4, noise=False)
+		mse, r2, var, bias = scor.K_Fold_Cross_Validation(test.X_train, test.y_train, model='LASSO',  k_folds=k_folds, noise=noise)
 		print("\nCross Validation MSE: {}\nR2 Score : {}\nVariance : {}\nBias : {}".format(mse, r2, var, bias))
